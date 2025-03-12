@@ -1,3 +1,7 @@
+I have implemented BBRv2 based on the Quinn library and with reference to the Quiche library("https://github.com/google/quiche.git"). However, currently, the pacing rate of BBRv2 has not been synchronized with the pacer in Quinn, and I will implement it in the future.
+
+
+
 <h1 align="center"><img width="500" src="https://raw.githubusercontent.com/quinn-rs/quinn/51a3cea225670757cb844a342428e4e1341d9f13/docs/thumbnail.svg" /></h1>
 
 [![Documentation](https://docs.rs/quinn/badge.svg)](https://docs.rs/quinn/)
