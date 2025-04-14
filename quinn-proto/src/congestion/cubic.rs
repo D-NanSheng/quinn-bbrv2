@@ -219,6 +219,7 @@ impl Controller for Cubic {
     }
 
     fn window(&self) -> u64 {
+        // eprintln!("congestion window is {}", self.window);
         self.window
     }
 

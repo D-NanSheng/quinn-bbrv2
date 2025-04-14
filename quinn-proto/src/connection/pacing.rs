@@ -59,12 +59,15 @@ impl Pacer {
         );
 
         if window != self.last_window || mtu != self.last_mtu {
+            
             self.capacity = optimal_capacity(smoothed_rtt, window, mtu);
-
+            // eprintln!("self.tokens:{}, self.capacity:{}, smoothed_rtt:{:?}, window:{}, last_window:{:?}, mtu:{}",
+            // self.tokens, self.capacity, smoothed_rtt, window, self.last_window, mtu);
             // Clamp the tokens
             self.tokens = self.capacity.min(self.tokens);
             self.last_window = window;
             self.last_mtu = mtu;
+            
         }
 
         // if we can already send a packet, there is no need for delay
@@ -81,6 +84,7 @@ impl Pacer {
 
         let time_elapsed = now.checked_duration_since(self.prev).unwrap_or_else(|| {
             warn!("received a timestamp early than a previous recorded time, ignoring");
+            // eprintln!("received a timestamp early than a previous recorded time, ignoring");
             Default::default()
         });
 
@@ -90,13 +94,15 @@ impl Pacer {
 
         let elapsed_rtts = time_elapsed.as_secs_f64() / smoothed_rtt.as_secs_f64();
         let new_tokens = window as f64 * 1.25 * elapsed_rtts;
+        // eprintln!("now:{:?}, elapsed_rtts(s):{}, time_elapsed(s):{}, smoothed_rtt(s):{}, window:{}, new_tokens:{}"
+        //     , now, elapsed_rtts, time_elapsed.as_secs_f64(), smoothed_rtt.as_secs_f64(), window, new_tokens);
         self.tokens = self
             .tokens
             .saturating_add(new_tokens as _)
             .min(self.capacity);
 
         self.prev = now;
-
+        // eprintln!("self.tokens:{}, bytes_to_send:{}", self.tokens, bytes_to_send);
         // if we can already send a packet, there is no need for delay
         if self.tokens >= bytes_to_send {
             return None;
@@ -109,6 +115,7 @@ impl Pacer {
 
         // divisions come before multiplications to prevent overflow
         // this is the time at which the pacing window becomes empty
+        // eprintln!("unscaled_delay:{}", unscaled_delay.as_secs_f64());
         Some(self.prev + (unscaled_delay / 5) * 4)
     }
 }

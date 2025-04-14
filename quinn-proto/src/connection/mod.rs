@@ -641,12 +641,14 @@ impl Connection {
                     debug_assert!(untracked_bytes <= segment_size as u64);
 
                     let bytes_to_send = segment_size as u64 + untracked_bytes;
-                    if self.path.in_flight.bytes + bytes_to_send >= self.path.congestion.window() {
+                    if self.path.in_flight.bytes + bytes_to_send >= self.path.congestion.window() { // 这里相当于代替了new bbr2中的 can_send
                         space_idx += 1;
                         congestion_blocked = true;
                         // We continue instead of breaking here in order to avoid
                         // blocking loss probes queued for higher spaces.
                         trace!("blocked by congestion control");
+                        // eprintln!("sending is blocked by congestion control, self.path.in_flight.bytes:{}, bytes_to_send:{}",
+                        // self.path.in_flight.bytes, bytes_to_send);
                         continue;
                     }
 
@@ -680,6 +682,7 @@ impl Connection {
                         // Loss probes should be subject to pacing, even though
                         // they are not congestion controlled.
                         trace!("blocked by pacing");
+                        // eprintln!("sending is blocked by pacing");
                         break;
                     }
                 }
@@ -714,9 +717,11 @@ impl Connection {
                         // GSO batch.
                         builder.pad_to(segment_size as u16);
                     }
-
+                    // eprintln!("finish_and_track 2 start");
                     builder.finish_and_track(now, self, sent_frames.take(), buf);
-
+            //         eprintln!("sent info now:{:?}, space_id:{:?}, buf.len:{}, builder.max_size:{}, builder.exact_number:{}, path.in_flight.bytes:{}", 
+            // now, space_id, buf.len(), builder.max_size, builder.exact_number,  self.path.in_flight.bytes);
+                    // eprintln!("finish_and_track 2 over");
                     if num_datagrams == 1 {
                         // Set the segment size for this GSO batch to the size of the first UDP
                         // datagram in the batch. Larger data that cannot be fragmented
@@ -773,7 +778,9 @@ impl Connection {
                 // datagram.
                 // Finish current packet without adding extra padding
                 if let Some(builder) = builder_storage.take() {
+                    // eprintln!("finish_and_track 3 start");
                     builder.finish_and_track(now, self, sent_frames.take(), buf);
+                    // eprintln!("finish_and_track 3 over");
                 }
             }
 
@@ -895,6 +902,7 @@ impl Connection {
                     buf.write(token);
                     self.stats.frame_tx.path_response += 1;
                     builder.pad_to(MIN_INITIAL_SIZE);
+                    // eprintln!("finish_and_track 1 start");
                     builder.finish_and_track(
                         now,
                         self,
@@ -904,6 +912,7 @@ impl Connection {
                         }),
                         buf,
                     );
+                    // eprintln!("finish_and_track 1 over");
                     self.stats.udp_tx.on_sent(1, buf.len());
                     return Some(Transmit {
                         destination: remote,
@@ -917,7 +926,11 @@ impl Connection {
 
             let sent =
                 self.populate_packet(now, space_id, buf, builder.max_size, builder.exact_number);
-
+            // eprintln!("sent info now:{:?}, space_id:{:?}, buf.len:{}, builder.max_size:{}, builder.exact_number:{}, is_retransmissible:{}, path.in_flight.bytes:{}", 
+            // now, space_id, buf.len(), builder.max_size, builder.exact_number, !sent.non_retransmits, self.path.in_flight.bytes);
+            // if space_id == SpaceId::Data {
+            //     self.path.congestion.on_sent_info(now, self.path.in_flight.bytes as usize, builder.exact_number, buf.len(), !sent.non_retransmits);
+            // }
             // ACK-only packets should only be sent when explicitly allowed. If we write them due to
             // any other reason, there is a bug which leads to one component announcing write
             // readiness while not writing any data. This degrades performance. The condition is
@@ -956,6 +969,8 @@ impl Connection {
             self.path
                 .congestion
                 .on_sent(now, buf.len() as u64, last_packet_number);
+            // eprintln!("sent info now:{:?}, buf.len:{}, last_packet_number:{}", 
+            // now, buf.len(), last_packet_number);
         }
 
         self.app_limited = buf.is_empty() && !congestion_blocked;
@@ -1001,8 +1016,9 @@ impl Connection {
                 non_retransmits: true,
                 ..Default::default()
             };
+            // eprintln!("finish_and_track 4 start");
             builder.finish_and_track(now, self, Some(sent_frames), buf);
-
+            // eprintln!("finish_and_track 4 over");
             self.stats.path.sent_plpmtud_probes += 1;
             num_datagrams = 1;
 
@@ -1401,6 +1417,8 @@ impl Connection {
                     // discussion at
                     // https://www.rfc-editor.org/rfc/rfc9000.html#name-limiting-ranges-by-tracking
                     self.spaces[space].pending_acks.subtract_below(acked);
+                    // eprintln!("ack_pkt info, largest_acked_num:{:?}, acked_pkt_size:{}, time_sent:{:?}",
+                    // info.largest_acked, info.size, info.time_sent);
                 }
                 ack_eliciting_acked |= info.ack_eliciting;
 
@@ -1414,6 +1432,7 @@ impl Connection {
 
                 // Notify ack frequency that a packet was acked, because it might contain an ACK_FREQUENCY frame
                 self.ack_frequency.on_acked(packet);
+                
 
                 self.on_packet_acked(now, packet, info);
             }
@@ -1437,6 +1456,10 @@ impl Connection {
             };
             let rtt = instant_saturating_sub(now, self.spaces[space].largest_acked_packet_sent);
             self.path.rtt.update(ack_delay, rtt);
+            // for new bbr2 updating rtt
+            // eprintln!("befor self.path.congestion.rtt_update :{:?} ", Instant::now());
+            self.path.congestion.rtt_update(rtt, ack_delay, now, self.state.is_established());
+            // eprintln!("after self.path.congestion.rtt_update :{:?} ", Instant::now());
             if self.path.first_packet_after_rtt_sample.is_none() {
                 self.path.first_packet_after_rtt_sample =
                     Some((space, self.spaces[space].next_packet_number));
@@ -1513,6 +1536,7 @@ impl Connection {
                 self.app_limited,
                 &self.path.rtt,
             );
+            self.path.congestion.on_app_limited(self.path.in_flight.bytes as usize, self.app_limited);
         }
 
         // Update state for confirmed delivery of frames
@@ -1586,7 +1610,7 @@ impl Connection {
         let in_flight_mtu_probe = self.path.mtud.in_flight_mtu_probe();
         let rtt = self.path.rtt.conservative();
         let loss_delay = cmp::max(rtt.mul_f32(self.config.time_threshold), TIMER_GRANULARITY);
-
+        // eprintln!("-------detect_lost_packets 1------------");
         // Packets sent before this time are deemed lost.
         let lost_send_time = now.checked_sub(loss_delay).unwrap();
         let largest_acked_packet = self.spaces[pn_space].largest_acked_packet.unwrap();
@@ -1651,7 +1675,9 @@ impl Connection {
 
             prev_packet = Some(packet);
         }
-
+        // println!("-------detect_lost_packets 2------------");
+        let mut new_bbr2_lost: Vec<(u64, usize)> = Vec::new();
+        let prior_in_flight = self.path.in_flight.bytes as usize;
         // OnPacketsLost
         if let Some(largest_lost) = lost_packets.last().cloned() {
             let old_bytes_in_flight = self.path.in_flight.bytes;
@@ -1664,7 +1690,7 @@ impl Connection {
                 lost_packets,
                 size_of_lost_packets
             );
-
+            
             for &packet in &lost_packets {
                 let info = self.spaces[pn_space].take(packet).unwrap(); // safe: lost_packets is populated just above
                 self.remove_in_flight(packet, &info);
@@ -1673,6 +1699,12 @@ impl Connection {
                 }
                 self.spaces[pn_space].pending |= info.retransmits;
                 self.path.mtud.on_non_probe_lost(packet, info.size);
+                // for new bbr2
+                if pn_space == SpaceId::Data {
+                    new_bbr2_lost.push((packet, info.size as usize));
+                }
+                
+                // eprintln!("lost packet num:{}, size:{}, SpaceID:{:?}", packet, info.size, pn_space);
             }
 
             if self.path.mtud.black_hole_detected(now) {
@@ -1684,7 +1716,8 @@ impl Connection {
                     self.datagrams.drop_oversized(max_datagram_size);
                 }
             }
-
+            println!("-------detect_lost_packets 3------------");
+            
             // Don't apply congestion penalty for lost ack-only packets
             let lost_ack_eliciting = old_bytes_in_flight != self.path.in_flight.bytes;
 
@@ -1698,7 +1731,22 @@ impl Connection {
                 );
             }
         }
-
+        // for new bbr2
+        if pn_space == SpaceId::Data {
+            // eprintln!("befor self.path.congestion.on_new_bbr2_congestion :{:?} ", Instant::now());
+            // self.path.congestion.on_new_bbr2_congestion(prior_in_flight, self.path.in_flight.bytes as usize, now, 
+            //     self.spaces[pn_space].largest_acked_packet.unwrap(), self.spaces[pn_space].largest_acked_packet_sent, & new_bbr2_lost, 
+            // self.spaces[pn_space].largest_acked_packet.unwrap()+1, 
+            // self.spaces[pn_space].sent_packets.iter().map(|(packet_num, sent_packet)| (*packet_num, sent_packet.time_sent))
+            // .collect());
+            self.path.congestion.on_new_bbr2_congestion(prior_in_flight, self.path.in_flight.bytes as usize, now, 
+                self.spaces[pn_space].largest_acked_packet.unwrap(), self.spaces[pn_space].largest_acked_packet_sent, & new_bbr2_lost, 
+            self.spaces[pn_space].largest_acked_packet.unwrap()+1);
+            // eprintln!("lost pkt info : largest_acked_packet:{}, largest_ack_eliciting_sent:{}, largest_acked_packet_sent:{:?}",
+            //  self.spaces[pn_space].largest_acked_packet.unwrap(), self.spaces[pn_space].largest_ack_eliciting_sent, self.spaces[pn_space].largest_acked_packet_sent);
+            // eprintln!("after self.path.congestion.on_new_bbr2_congestion :{:?} ", Instant::now());
+       }
+        // println!("-------detect_lost_packets 4------------");
         // Handle a lost MTU probe
         if let Some(packet) = lost_mtu_probe {
             let info = self.spaces[SpaceId::Data].take(packet).unwrap(); // safe: lost_mtu_probe is omitted from lost_packets, and therefore must not have been removed yet

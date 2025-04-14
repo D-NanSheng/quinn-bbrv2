@@ -1,7 +1,8 @@
 //! Logic for controlling the rate at which data is sent
 
 use crate::connection::RttEstimator;
-use std::any::Any;
+use std::collections::BTreeMap;
+use std::{any::Any, time::Duration};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -9,11 +10,14 @@ mod bbr;
 mod cubic;
 mod new_reno;
 mod bbr2;
+mod newbbr2;
 
 pub use bbr::{Bbr, BbrConfig};
 pub use cubic::{Cubic, CubicConfig};
 pub use new_reno::{NewReno, NewRenoConfig};
 pub use  bbr2::{Bbr2, BbrConfig2};
+pub use newbbr2::{NewBbr2,NewBbr2Config};
+
 /// Common interface for different congestion controllers
 pub trait Controller: Send + Sync {
     /// One or more packets were just sent
@@ -77,6 +81,23 @@ pub trait Controller: Send + Sync {
 
     /// return pacing window for connection/pacing
     fn pacing_window(&self) -> u64;
+
+    // update rtt stats for new bbr2
+    fn rtt_update(&mut self, latest_rtt: Duration, mut ack_delay: Duration, now: Instant, handshake_confirmed: bool){}
+
+    // cansend for new bbr2
+    fn can_send(&self, bytes_in_flight: usize) -> bool {true}
+
+    // sent packet info for new bbr2
+    fn on_sent_info( &mut self, sent_time: std::time::Instant, bytes_in_flight: usize,
+        packet_number: u64, bytes: usize, is_retransmissible: bool) {}
+    
+    // congestion info including info of lost pks
+    fn on_new_bbr2_congestion(&mut self, prior_in_flight: usize, bytes_in_flight: usize, event_time: Instant,
+    max_acked_pkt_num: u64, max_acked_pkts_acked_time: Instant, new_bbr2_lost: & Vec<(u64, usize)>,least_unacked: u64) {}
+
+    // for new bbr2
+    fn on_app_limited(&mut self, bytes_in_flight: usize, app_limited: bool) {}
 }
 
 /// Constructs controllers on demand

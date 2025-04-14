@@ -198,7 +198,7 @@ impl PacketBuilder {
             None => return,
         };
 
-        let size = match padded || ack_eliciting {
+        let size: u16 = match padded || ack_eliciting {
             true => size as u16,
             false => 0,
         };
@@ -214,6 +214,14 @@ impl PacketBuilder {
 
         conn.path
             .sent(exact_number, packet, &mut conn.spaces[space_id]);
+        if space_id == SpaceId::Data {
+            // eprintln!("before conn.path.congestion.on_sent_info :{:?}", Instant::now());
+            conn.path.congestion.on_sent_info(now, conn.path.in_flight.bytes as usize
+                , exact_number, size as usize, true);
+            // eprintln!("sent info now:{:?}, space_id:{:?}, size:{}, pkt_number:{}, is_retransmissible:{}, bytes in flight:{}", 
+            // now, space_id, size, exact_number, true, conn.path.in_flight.bytes);
+            // eprintln!("after conn.path.congestion.on_sent_info :{:?}", Instant::now());
+        }
         conn.stats.path.sent_packets += 1;
         conn.reset_keep_alive(now);
         if size != 0 {

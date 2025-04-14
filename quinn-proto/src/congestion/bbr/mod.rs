@@ -1,8 +1,10 @@
 use std::any::Any;
 use std::fmt::Debug;
+use std::io::{BufWriter, Write};
+use std::fs::OpenOptions;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
+use std::time::{SystemTime, UNIX_EPOCH};
 use rand::{Rng, SeedableRng};
 
 use crate::congestion::bbr::bw_estimation::BandwidthEstimation;
@@ -405,6 +407,19 @@ impl Controller for Bbr {
         if self.is_min_rtt_expired(now, app_limited) || self.min_rtt > rtt.min() {
             self.min_rtt = rtt.min();
         }
+
+        let ms_since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()  // 安全：系统时间不可能早于 Unix 纪元
+        .as_millis();
+
+        // let file = OpenOptions::new()
+        // .append(true)
+        // .create(true)
+        // .open("bbr-rtt.txt")
+        // .expect("Failed to open file");
+        // let mut writer = BufWriter::new(file);
+        eprintln!("time:{}, latest_rtt:{:?}", ms_since_epoch, rtt.get_latest());
     }
 
     fn on_end_acks(
@@ -477,11 +492,18 @@ impl Controller for Bbr {
     }
 
     fn window(&self) -> u64 {
+        let ms_since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()  // 安全：系统时间不可能早于 Unix 纪元
+        .as_millis();
         if self.mode == Mode::ProbeRtt {
+            eprintln!("time:{}, cwnd:{}",ms_since_epoch, self.get_probe_rtt_cwnd());
             return self.get_probe_rtt_cwnd();
         } else if self.recovery_state.in_recovery() && self.mode != Mode::Startup {
+            eprintln!("time:{}, cwnd:{}",ms_since_epoch, self.cwnd.min(self.recovery_window));
             return self.cwnd.min(self.recovery_window);
         }
+        eprintln!("time:{}, cwnd:{}",ms_since_epoch, self.cwnd);
         self.cwnd
     }
 
