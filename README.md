@@ -9,8 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE-MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
 
-在quinn的基础上，依照google 的 quiche 实现了New BBRV2，注意，BBr2 mod测试是有问题的，NewBbr2没有问题
-
+在quinn的基础上，依照google 的 quiche 实现了New BBRV2，注意，BBr2 mod测试是有问题的，NewBbr2没有问题。 测试文件在NewBBr2TestImage 文件夹中
 
 Quinn is a pure-Rust, async-compatible implementation of the IETF [QUIC][quic] transport protocol.
 The project was founded by [Dirkjan Ochtman](https://github.com/djc) and
